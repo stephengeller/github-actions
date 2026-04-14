@@ -1,0 +1,15 @@
+name: "TSDoc Enforcer"
+description: "Fails PRs that add exported TypeScript symbols without TSDoc, and posts AI-generated doc blocks ready to paste."
+author: "stephengeller"
+branding:
+  icon: "book-open"
+  color: "purple"
+
+# No inputs in v0.1 — opinionated defaults only.
+# Required secrets in the consuming workflow:
+#   ANTHROPIC_API_KEY — used to generate TSDoc blocks via Claude
+#   GITHUB_TOKEN      — provided automatically by GitHub, used to read the PR diff and post the comment
+
+runs:
+  using: "node20"
+  main: "dist/index.js"

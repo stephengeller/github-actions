@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.DS_Store
+.env
+.env.*
+coverage/
+*.tsbuildinfo
+
+# Build output is intentionally NOT gitignored — the dist/ bundle is what
+# consumers execute when they reference this action via `uses:`.
