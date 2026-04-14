@@ -36,24 +36,25 @@ export function findUndocumentedSymbols(files: ChangedFile[]): Violation[] {
     const source = project.createSourceFile(file.path, file.content, {
       overwrite: true,
     });
+    const lines = file.content.split("\n");
+
+    const ctx: CollectCtx = { filePath: file.path, lines, out: violations };
 
     for (const fn of source.getFunctions()) {
-      if (fn.isExported()) collect(fn, "function", file.path, violations);
+      if (fn.isExported()) collect(fn, "function", ctx);
     }
 
     for (const iface of source.getInterfaces()) {
-      if (iface.isExported())
-        collect(iface, "interface", file.path, violations);
+      if (iface.isExported()) collect(iface, "interface", ctx);
     }
 
     for (const alias of source.getTypeAliases()) {
-      if (alias.isExported())
-        collect(alias, "type-alias", file.path, violations);
+      if (alias.isExported()) collect(alias, "type-alias", ctx);
     }
 
     for (const cls of source.getClasses()) {
       if (!cls.isExported()) continue;
-      collect(cls, "class", file.path, violations);
+      collect(cls, "class", ctx);
 
       for (const method of cls.getMethods()) {
         if (
@@ -61,7 +62,7 @@ export function findUndocumentedSymbols(files: ChangedFile[]): Violation[] {
           method.getScope() === "protected"
         )
           continue;
-        collect(method, "method", file.path, violations);
+        collect(method, "method", ctx);
       }
     }
   }
@@ -69,11 +70,16 @@ export function findUndocumentedSymbols(files: ChangedFile[]): Violation[] {
   return violations;
 }
 
+interface CollectCtx {
+  filePath: string;
+  lines: string[];
+  out: Violation[];
+}
+
 function collect(
   node: DocumentableNode,
   kind: Violation["kind"],
-  filePath: string,
-  out: Violation[],
+  ctx: CollectCtx,
 ): void {
   const jsDocs = node.getJsDocs();
   const name = getName(node);
@@ -81,12 +87,18 @@ function collect(
 
   if (!isTsDocIncomplete({ node, jsDocs, kind })) return;
 
-  out.push({
-    file: filePath,
-    line: node.getStartLineNumber(),
+  const line = node.getStartLineNumber();
+  // `lines` is 0-indexed; `line` is 1-indexed. Fallback to empty string
+  // guards against rare mismatches (e.g. trailing newline handling).
+  const originalLine = ctx.lines[line - 1] ?? "";
+
+  ctx.out.push({
+    file: ctx.filePath,
+    line,
     symbolName: name,
     kind,
     source: truncateForPrompt(node.getText()),
+    originalLine,
   });
 }
 
