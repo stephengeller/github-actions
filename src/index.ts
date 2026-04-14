@@ -4,7 +4,7 @@ import * as github from "@actions/github";
 import { getChangedTypeScriptFiles } from "./diff";
 import { findUndocumentedSymbols } from "./analyze";
 import { generateTsDoc } from "./generate";
-import { upsertPrComment } from "./comment";
+import { postReviewWithSuggestions } from "./review";
 
 async function run(): Promise<void> {
   try {
@@ -59,16 +59,17 @@ async function run(): Promise<void> {
       })),
     );
 
-    await upsertPrComment({
+    await postReviewWithSuggestions({
       token: githubToken,
       owner,
       repo,
       prNumber,
+      headSha,
       violations: enriched,
     });
 
     core.setFailed(
-      `TSDoc missing for ${enriched.length} exported symbol(s). See PR comment for paste-ready blocks.`,
+      `TSDoc missing for ${enriched.length} exported symbol(s). Click "Apply suggestion" on each inline review comment to insert the generated block.`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

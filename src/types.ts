@@ -18,6 +18,12 @@ export interface Violation {
   kind: "function" | "class" | "method" | "interface" | "type-alias";
   /** The symbol's source slice, used as context for the generator. */
   source: string;
+  /**
+   * The exact content of the file at `line` (1-indexed). The review layer
+   * uses this to build a suggestion block that preserves the original line
+   * and its indentation beneath the inserted TSDoc.
+   */
+  originalLine: string;
 }
 
 /**
