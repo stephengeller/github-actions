@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import * as core from "@actions/core";
 
-import type { Violation } from "./types";
-import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
+import type { Violation } from "../core/types";
+import { SYSTEM_PROMPT, buildUserMessage } from "../core/prompt";
 
 const MODEL = "openai/gpt-4o-mini";
 const MAX_TOKENS = 1024;

@@ -1,7 +1,7 @@
 import * as github from "@actions/github";
 import * as core from "@actions/core";
 
-import type { EnrichedViolation } from "./types";
+import type { EnrichedViolation } from "../core/types";
 
 /**
  * Posts a PR review containing one inline suggestion per violation.
