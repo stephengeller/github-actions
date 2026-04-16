@@ -1,8 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 
-import { getChangedTypeScriptFiles } from "./diff";
-import { findUndocumentedSymbols } from "./analyze";
+import { getChangedTypeScriptFiles } from "../core/diff";
+import { findUndocumentedSymbols } from "../core/analyze";
 import { generateTsDoc } from "./generate";
 import { postReviewWithSuggestions } from "./review";
 
