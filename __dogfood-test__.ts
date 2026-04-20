@@ -44,6 +44,9 @@ export function applyDomainPolicy(input: string): string {
 
 // `skip` case: trivial type alias. Claude should pick action=skip; the
 // summary should list it as AI-skipped.
+/**
+ * Union of the three recognised log severity levels: `"info"`, `"warn"`, and `"error"`.
+ */
 export type Severity = "info" | "warn" | "error";
 
 // Borderline: exported class with a trivial constructor. Good for
