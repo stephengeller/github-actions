@@ -1,0 +1,252 @@
+name: Auto Downstream PR
+description: >
+  Runs in the downstream repo (e.g. amber-core). Given upstream PR metadata as
+  inputs, runs a user-supplied update command (typically `git subrepo pull`)
+  and opens or updates a PR that pulls the change in.
+author: amberelectric
+inputs:
+  token:
+    description: >
+      Token with contents:write and pull-requests:write on this repo. Use
+      actions/create-github-app-token to mint one from a GitHub App.
+    required: true
+  integration-name:
+    description: >
+      Short slug for the upstream integration (e.g. "growatt"). Used in the
+      branch name, commit message, PR title, and as $INTEGRATION inside
+      update-command.
+    required: true
+  upstream-repo:
+    description: "owner/repo of the upstream integration that triggered this run."
+    required: true
+  upstream-pr-number:
+    description: Number of the merged upstream PR.
+    required: true
+  upstream-sha:
+    description: Merge commit SHA of the upstream PR.
+    required: true
+  upstream-title:
+    description: Title of the upstream PR (for the PR body).
+    required: false
+    default: ""
+  upstream-author:
+    description: GitHub login of the upstream PR author (for the PR body).
+    required: false
+    default: ""
+  upstream-url:
+    description: HTML URL of the upstream PR (for the PR body).
+    required: false
+    default: ""
+  update-command:
+    description: >
+      Shell snippet executed inside the checked-out downstream repo. Must
+      produce a non-empty `git diff` to trigger a PR. Environment:
+      $INTEGRATION, $UPSTREAM_SHA, $UPSTREAM_PR, $UPSTREAM_REPO.
+    required: false
+    default: |
+      git subrepo pull "oem/${INTEGRATION}"
+  base:
+    description: Base branch for the downstream PR.
+    required: false
+    default: main
+  branch-prefix:
+    description: Prefix for the branch created in the downstream repo.
+    required: false
+    default: auto/bump
+  reviewers:
+    description: Comma-separated users/teams to request review from.
+    required: false
+    default: amberelectric/oem-dev
+  labels:
+    description: Comma-separated labels to apply.
+    required: false
+    default: ""
+  commit-message:
+    description: Override commit message. Templated if empty.
+    required: false
+    default: ""
+  pr-title:
+    description: Override PR title. Templated if empty.
+    required: false
+    default: ""
+  git-user-name:
+    description: git config user.name for the commit.
+    required: false
+    default: github-actions[bot]
+  git-user-email:
+    description: git config user.email for the commit.
+    required: false
+    default: 41898282+github-actions[bot]@users.noreply.github.com
+
+outputs:
+  pull-request-url:
+    description: URL of the created or updated downstream PR.
+    value: ${{ steps.pr.outputs.url }}
+  branch:
+    description: Branch pushed to the downstream repo.
+    value: ${{ steps.vars.outputs.branch }}
+  changed:
+    description: "'true' if the update-command produced a diff, else 'false'."
+    value: ${{ steps.commit.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute variables
+      id: vars
+      shell: bash
+      env:
+        INTEGRATION: ${{ inputs.integration-name }}
+        PREFIX: ${{ inputs.branch-prefix }}
+        UPSTREAM_PR: ${{ inputs.upstream-pr-number }}
+        UPSTREAM_SHA: ${{ inputs.upstream-sha }}
+        UPSTREAM_TITLE: ${{ inputs.upstream-title }}
+        UPSTREAM_REPO: ${{ inputs.upstream-repo }}
+        UPSTREAM_AUTHOR: ${{ inputs.upstream-author }}
+        UPSTREAM_URL: ${{ inputs.upstream-url }}
+        COMMIT_MESSAGE_IN: ${{ inputs.commit-message }}
+        PR_TITLE_IN: ${{ inputs.pr-title }}
+      run: |
+        set -euo pipefail
+        branch="${PREFIX}-${INTEGRATION}-pr-${UPSTREAM_PR}"
+        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+        short_sha="${UPSTREAM_SHA:0:7}"
+        if [ -n "${COMMIT_MESSAGE_IN}" ]; then
+          commit_msg="${COMMIT_MESSAGE_IN}"
+        else
+          commit_msg="chore(${INTEGRATION}): bump to ${short_sha} (${UPSTREAM_REPO}#${UPSTREAM_PR})"
+        fi
+        {
+          echo "commit_message<<__EOF__"
+          echo "${commit_msg}"
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ -n "${PR_TITLE_IN}" ]; then
+          pr_title="${PR_TITLE_IN}"
+        else
+          pr_title="chore(${INTEGRATION}): pull in ${UPSTREAM_REPO}#${UPSTREAM_PR}"
+        fi
+        {
+          echo "pr_title<<__EOF__"
+          echo "${pr_title}"
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+        upstream_link="${UPSTREAM_URL}"
+        if [ -z "${upstream_link}" ]; then
+          upstream_link="https://github.com/${UPSTREAM_REPO}/pull/${UPSTREAM_PR}"
+        fi
+        title_line="${UPSTREAM_TITLE:-${UPSTREAM_REPO}#${UPSTREAM_PR}}"
+        author_line=""
+        if [ -n "${UPSTREAM_AUTHOR}" ]; then
+          author_line="**Author:** @${UPSTREAM_AUTHOR}"
+        fi
+        {
+          echo "pr_body<<__EOF__"
+          echo "Automated bump triggered by ${UPSTREAM_REPO}#${UPSTREAM_PR}."
+          echo ""
+          echo "**Upstream PR:** [${title_line}](${upstream_link})"
+          echo "**Integration:** \`${INTEGRATION}\`"
+          echo "**Merge commit:** \`${UPSTREAM_SHA}\`"
+          if [ -n "${author_line}" ]; then echo "${author_line}"; fi
+          echo ""
+          echo "_Generated by the \`auto-downstream-pr\` action. Re-runs of the upstream merge will force-update this PR in place._"
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Checkout downstream repo
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.base }}
+        token: ${{ inputs.token }}
+        fetch-depth: 0
+
+    - name: Create branch and run update command
+      shell: bash
+      env:
+        BRANCH: ${{ steps.vars.outputs.branch }}
+        INTEGRATION: ${{ inputs.integration-name }}
+        UPSTREAM_SHA: ${{ inputs.upstream-sha }}
+        UPSTREAM_PR: ${{ inputs.upstream-pr-number }}
+        UPSTREAM_REPO: ${{ inputs.upstream-repo }}
+        UPDATE_COMMAND: ${{ inputs.update-command }}
+        GIT_USER_NAME: ${{ inputs.git-user-name }}
+        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
+      run: |
+        set -euo pipefail
+        git config user.name  "${GIT_USER_NAME}"
+        git config user.email "${GIT_USER_EMAIL}"
+        git checkout -B "${BRANCH}"
+        echo "::group::update-command"
+        bash -eo pipefail -c "${UPDATE_COMMAND}"
+        echo "::endgroup::"
+
+    - name: Commit and push
+      id: commit
+      shell: bash
+      env:
+        BRANCH: ${{ steps.vars.outputs.branch }}
+        COMMIT_MESSAGE: ${{ steps.vars.outputs.commit_message }}
+      run: |
+        set -euo pipefail
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "No changes produced by update-command — nothing to commit."
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        git add -A
+        git commit -m "${COMMIT_MESSAGE}"
+        git push --force-with-lease origin "${BRANCH}"
+        echo "changed=true" >> "$GITHUB_OUTPUT"
+
+    - name: Create or update PR
+      if: steps.commit.outputs.changed == 'true'
+      id: pr
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BASE: ${{ inputs.base }}
+        BRANCH: ${{ steps.vars.outputs.branch }}
+        PR_TITLE: ${{ steps.vars.outputs.pr_title }}
+        PR_BODY: ${{ steps.vars.outputs.pr_body }}
+        REVIEWERS: ${{ inputs.reviewers }}
+        LABELS: ${{ inputs.labels }}
+      run: |
+        set -euo pipefail
+        existing="$(gh pr list \
+          --head "${BRANCH}" \
+          --state open \
+          --json url,number \
+          --jq '.[0] // empty')"
+
+        if [ -n "${existing}" ]; then
+          url="$(echo "${existing}" | jq -r .url)"
+          number="$(echo "${existing}" | jq -r .number)"
+          echo "Updating existing PR #${number}: ${url}"
+          gh pr edit "${number}" --title "${PR_TITLE}" --body "${PR_BODY}"
+        else
+          echo "Creating new PR"
+          url="$(gh pr create \
+            --base  "${BASE}" \
+            --head  "${BRANCH}" \
+            --title "${PR_TITLE}" \
+            --body  "${PR_BODY}")"
+          number="$(gh pr view "${url}" --json number --jq .number)"
+        fi
+
+        if [ -n "${REVIEWERS}" ]; then
+          gh pr edit "${number}" --add-reviewer "${REVIEWERS}" \
+            || echo "::warning::Failed to add reviewers: ${REVIEWERS}"
+        fi
+        if [ -n "${LABELS}" ]; then
+          gh pr edit "${number}" --add-label "${LABELS}" \
+            || echo "::warning::Failed to add labels: ${LABELS}"
+        fi
+
+        echo "url=${url}" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Downstream PR"
+          echo "${url}"
+        } >> "$GITHUB_STEP_SUMMARY"
